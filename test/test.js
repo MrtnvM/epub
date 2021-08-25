@@ -1,8 +1,8 @@
-import * as assert from "assert";
-import * as mocha from "mocha";
-import pEvent = require("p-event");
+const assert = require("assert");
+const mocha = require("mocha");
+const pEvent = require("p-event");
 
-const EPub = require("../../epub");
+const EPub = require("../epub");
 
 mocha.describe("EPub", () => {
   mocha.it("init", () => {

@@ -1,25 +1,140 @@
 var xml2js = require("xml2js");
 var xml2jsOptions = xml2js.defaults["0.1"];
 var EventEmitter = require("events").EventEmitter;
-var AdmZip = require("adm-zip");
+const AdmZip = require("adm-zip");
+const unzipper = require("unzipper");
+const fs = require("fs");
 
-var ZipFile = function (filename) {
-  this.admZip = new AdmZip(filename);
-  this.names = this.admZip.getEntries().map(function (zipEntry) {
-    return zipEntry.entryName;
-  });
-  this.count = this.names.length;
+const getFilesThroughAdmZip = (filename) => {
+  const admZip = new AdmZip(filename);
+  const files = admZip.getEntries().map((e) => e.entryName);
+  return files;
 };
 
-ZipFile.prototype.readFile = function (name, cb) {
-  this.admZip.readFileAsync(
-    this.admZip.getEntry(name),
-    function (buffer, error) {
+const getFilesThroughUnzipper = async (filename) => {
+  const files = [];
+
+  return new Promise((resolve, reject) => {
+    fs.createReadStream(filename)
+      .pipe(unzipper.Parse())
+      .on("entry", (entry) => {
+        files.push(entry.path);
+        entry.autodrain();
+      })
+      .on("close", () => {
+        console.log(files);
+        resolve(files);
+      })
+      .on("error", (error) => {
+        reject(error);
+      });
+  });
+};
+
+const getZipEntryFiles = async (filename) => {
+  let files;
+
+  try {
+    files = getFilesThroughAdmZip(filename);
+  } catch (err) {
+    console.error(err);
+  }
+
+  if (!files) {
+    try {
+      files = await getFilesThroughUnzipper(filename);
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  if (!files) {
+    throw new Error("PARSING EPUB FILE: Failed to get entry files");
+  }
+
+  return files;
+};
+
+const readFileThroughAdmZip = async (zipFile, entryFile) => {
+  const admZip = new AdmZip(zipFile);
+
+  return new Promise((resolve, reject) => {
+    admZip.readFileAsync(admZip.getEntry(entryFile), (buffer, error) => {
       // `error` is bogus right now, so let's just drop it.
       // see https://github.com/cthackers/adm-zip/pull/88
-      return cb(null, buffer);
+
+      if (error) {
+        reject(error);
+      }
+
+      resolve(buffer);
+    });
+  });
+};
+
+const readFileThroughUnzipper = async (zipFile, entryFile) => {
+  return new Promise((resolve, reject) => {
+    fs.createReadStream(zipFile)
+      .pipe(unzipper.ParseOne(entryFile))
+      .on("entry", async (entry) => {
+        try {
+          const data = await entry.buffer();
+          entry.autodrain();
+          resolve(data);
+        } catch (error) {
+          console.error(error);
+          entry.autodrain();
+          reject(error);
+        }
+      })
+      .on("close", () => {
+        console.log("stream closed");
+      })
+      .on("error", (error) => {
+        reject(error);
+      });
+  });
+};
+
+const readZipEntryFile = async (zipFile, entryFile) => {
+  let buffer;
+
+  try {
+    buffer = readFileThroughAdmZip(zipFile, entryFile);
+  } catch (err) {
+    console.error(err);
+  }
+
+  if (!buffer) {
+    try {
+      buffer = await readFileThroughUnzipper(zipFile, entryFile);
+    } catch (err) {
+      console.error(err);
     }
-  );
+  }
+
+  if (!buffer) {
+    throw new Error("PARSING EPUB FILE: Failed to get entry file " + entryFile);
+  }
+
+  return buffer;
+};
+
+const createZip = async (zipFile) => {
+  const names = await getZipEntryFiles(zipFile);
+  const length = names.length;
+
+  const readFile = (entryFile, cb) => {
+    readZipEntryFile(zipFile, entryFile).then((buffer) => {
+      cb(null, buffer);
+    });
+  };
+
+  return {
+    names,
+    length,
+    readFile,
+  };
 };
 
 //TODO: Cache parsed data
@@ -94,9 +209,9 @@ class EPub extends EventEmitter {
    *  Opens the epub file with Zip unpacker, retrieves file listing
    *  and runs mime type check
    **/
-  open() {
+  async open() {
     try {
-      this.zip = new ZipFile(this.filename);
+      this.zip = await createZip(this.filename);
     } catch (E) {
       this.emit("error", new Error("Invalid/missing file: " + E));
       return;
