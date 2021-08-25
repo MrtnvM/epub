@@ -1,13 +1,13 @@
-import * as assert from "assert";
-import * as mocha from "mocha";
-import * as fs from "fs";
-import pEvent = require("p-event");
+const assert = require("assert");
+const mocha = require("mocha");
+const fs = require("fs");
+const pEvent = require("p-event");
 
-const EPub = require("../../epub");
+const EPub = require("../epub");
 
-const getBookPath = (book: string) => `./example/epub_books/${book}`;
+const getBookPath = (book) => `./example/epub_books/${book}`;
 
-const parseBook = async (path: string) => {
+const parseBook = async (path) => {
   const epub = new EPub(path);
 
   epub.parse();
@@ -32,7 +32,6 @@ mocha.describe("EPub books parsing", () => {
         isBookParsed = true;
 
         assert.ok(epub.metadata.title);
-        assert.ok(epub.metadata.description);
         assert.ok(epub.metadata.cover);
         assert.ok(epub.metadata.date);
         assert.ok(epub.metadata.creator);
