@@ -100,7 +100,7 @@ const readZipEntryFile = async (zipFile, entryFile) => {
   let buffer;
 
   try {
-    buffer = readFileThroughAdmZip(zipFile, entryFile);
+    buffer = await readFileThroughAdmZip(zipFile, entryFile);
   } catch (err) {
     console.error(err);
   }
